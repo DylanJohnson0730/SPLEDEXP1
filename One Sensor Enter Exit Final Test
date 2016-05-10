@@ -5,35 +5,31 @@
 #define MIN_ARMUP_DWELL_TIME (3 * 1000)
 #define PERMANENTLY_UP_DWELL_TIME (30 * 1000)
 
-Ultrasonic ultrasonic(3,2); //trig, echo
-Ultrasonic ultrasonic1(13,1);
+Ultrasonic ultrasonic(3,2);   //trig, echo
+Ultrasonic ultrasonic1(13,1); //trig, echo
 
-RH_NRF24 nrf24;
-RH_NRF24 nrf24X1;
+RH_NRF24 nrf24;               //Call nRF module from RH library
+RH_NRF24 nrf24X1;             //Call nRF module from RH library
 
-const int S_armdown = 0;
-const int S_armup = 1;
-const int S_armupperm = 2;
-const int S_armdown1 = 3;
-const int S_armup1 = 4;
-const int S_armupperm1 = 5;
-const int CarThresholdValue = 90;
-uint8_t Count = 80;
-int state;
-int state1;
+const int S_armdown = 0;      //State amrdownnter
+const int S_armup = 1;        //State armupEnter
+const int S_armupperm = 2;    //State armuppermEnter
+const int S_armdown1 = 3;     //State armdownExit
+const int S_armup1 = 4;       //State armupExit
+const int S_armupperm1 = 5;   //State armuppermExit
+const int CarThresholdValue = 90;   //Car distance threshold value to 1 meter
+uint8_t Count = 80;            //Upper lot available parking spots 
+int state;                     //State for entrance switch case
+int state1;                    //State for exit switch case
 
 
-//int SensorInArm = 1;
-//int SensorInCar = 2;
-//int SensorOutArm = 3;
-//int SensorOutCar = 4;
-
-uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
+uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];    //8 bit buffer
 
 void setup()
 {
-  int state = S_armdown;
-  int state = S_armdown1;
+  int state = S_armdown;        //State for entrance switch case
+  int state = S_armdown1;       //State for exit switch case
+  
   Serial.begin(9600);
   while (!Serial)
     ; // wait for serial port to connect. Needed for Leonardo only
@@ -45,49 +41,49 @@ void setup()
   if (!nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm))
     Serial.println("setRF failed");
 
-  setBuf(buf, Count);
-  nrf24.send(buf, sizeof(buf));
+  setBuf(buf, Count);               //Set buffer to Count Value
+  nrf24.send(buf, sizeof(buf));     //Send buffer to receiver
 }
 
 void setBuf(uint8_t *buf, uint8_t Count)
 {
   int i;
-    for (i = 0; i < RH_NRF24_MAX_MESSAGE_LEN; ++i)
-    buf[i] = Count;
+    for (i = 0; i < RH_NRF24_MAX_MESSAGE_LEN; ++i)    //set i = max message length (32)
+    buf[i] = Count;                 //Set each byte = Count Value
 }
 
 void loop()
 {
-    static int  CurStateStartTime = 0;
-    static int  CurStateStartTime1 = 1;
-    int         CurStateDwellTime;
+    static int  CurStateStartTime = 0;    //set current time in entrance state = 0
+    static int  CurStateStartTime1 = 0;   //set current time in exit state = 0
+    int         CurStateDwellTime;        //initialize entrance state dwell time
     int         CurStateDwellTime1;
 
     switch (state)
     {
-        case S_armdown:
+        case S_armdown:                 
 
-            if(ultrasonic.Ranging(CM) < CarThresholdValue)
+            if(ultrasonic.Ranging(CM) < CarThresholdValue)  //If ultrasonic reads distance < 1 m
             {
-                state = S_armup;
-                CurStateStartTime = millis();
-                Count = Count - 1;
-                setBuf(buf, Count);
+                state = S_armup;              //switch state = armup
+                CurStateStartTime = millis(); //start new current state start time
+                Count = Count - 1;            //decrement count
+                setBuf(buf, Count);           //set buffer = new count value
 
-                Serial.println("Sending to nrf24_server");
-                nrf24.send(buf, sizeof(buf));
+                Serial.println("Sending to nrf24_server");  
+                nrf24.send(buf, sizeof(buf));   //send buffer to receiver at display
             }
             break;
 
         case S_armup:
 
-            CurStateDwellTime = millis() - CurStateStartTime;
+            CurStateDwellTime = millis() - CurStateStartTime;   //Determine time spent in state
 
-            if (ultrasonic.Ranging(CM) > CarThresholdValue && CurStateDwellTime >= MIN_ARMUP_DWELL_TIME)
+            if (ultrasonic.Ranging(CM) > CarThresholdValue && CurStateDwellTime >= MIN_ARMUP_DWELL_TIME)  //Wait a dwell time after sensor disengages for debouncing
             {
                 state = S_armdown;
             }
-            else if (CurStateDwellTime >= PERMANENTLY_UP_DWELL_TIME)
+            else if (CurStateDwellTime >= PERMANENTLY_UP_DWELL_TIME)    //if arm has been up indefinitely 
             {
                 state = S_armupperm;
             }
@@ -95,13 +91,16 @@ void loop()
             break;
         case S_armupperm:
 
-            if(ultrasonic.Ranging(CM) > CarThresholdValue)
+            if(ultrasonic.Ranging(CM) > CarThresholdValue)      //if car sensor is greater than 1 m
             {
                 state = S_armdown;
             }
-            else if (ultrasonic.Ranging(CM) < CarThresholdValue)
+            else if (ultrasonic.Ranging(CM) < CarThresholdValue)  //if car sensor is less than 1 m
             {
-                Count = Count - 1;
+                Count = Count - 1;              //Decrement Count
+                setBuf(buf, Count);             //set buffer = new count value
+  
+                nrf24.send(buf, sizeof(buf));   //send buffer to receiver at display
             }
      }
 
@@ -109,42 +108,43 @@ void loop()
     {
        case S_armdown1:
 
-            if(ultrasonic1.Ranging(CM) < CarThresholdValue)
+            if(ultrasonic1.Ranging(CM) < CarThresholdValue)     //if exit sensor reads distance less than 1 m
             {
-                state = S_armup1;
-                CurStateStartTime1 = millis();
-                Count = Count + 1;
-                setBuf(buf1, Count);
+                state = S_armup1;                 //switch to arm up state      
+                CurStateStartTime1 = millis();    //Initialize Current State Start Time
+                Count = Count + 1;                //Increment Count             
+                setBuf(buf1, Count);              //Set Buffer = new count value
 
-                Serial.println("Sending to nrf24_server");
-                nrf24X1.send(buf1, sizeof(buf));
+                nrf24X1.send(buf1, sizeof(buf));  //send buffer to receiver at display
             }
             break;
 
         case S_armup:
 
-            CurStateDwellTime1 = millis() - CurStateStartTime1;
+            CurStateDwellTime = millis() - CurStateStartTime;   //Determine time spent in state
 
-            if (ultrasonic1.Ranging(CM) > CarThresholdValue && CurStateDwellTime1 >= MIN_ARMUP_DWELL_TIME)
+            if (ultrasonic.Ranging(CM) > CarThresholdValue && CurStateDwellTime >= MIN_ARMUP_DWELL_TIME)  //Wait dwell time after sensor disengages for debouncing
             {
-                state = S_armdown1;
+                state = S_armdown;
             }
-            else if (CurStateDwellTime1 >= PERMANENTLY_UP_DWELL_TIME)
+            else if (CurStateDwellTime >= PERMANENTLY_UP_DWELL_TIME)    //if arm has been up indefinitely 
             {
-                state = S_armupperm1;
+                state = S_armupperm;
             }
 
             break;
         case S_armupperm:
 
-            if(ultrasonic1.Ranging(CM) > CarThresholdValue)
+            if(ultrasonic.Ranging(CM) > CarThresholdValue)      //if exit car sensor is greater than 1 m
             {
-                state = S_armdown1;
+                state = S_armdown;
             }
-            else if (ultrasonic1.Ranging(CM) < CarThresholdValue)
+            else if (ultrasonic.Ranging(CM) < CarThresholdValue)  //if exit car sensor is less than 1 m
             {
-                Count = Count + 1;
+                Count = Count + 1;            //Increment Count
+                setBuf(buf, Count);           //set buffer = new count value
+  
+                nrf24.send(buf, sizeof(buf));   //send buffer to receiver at display
             }
      }
-    }
 }
