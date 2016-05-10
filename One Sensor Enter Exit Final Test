@@ -1,0 +1,150 @@
+#include <SPI.h>
+#include <RH_NRF24.h>
+#include <Ultrasonic.h>
+
+#define MIN_ARMUP_DWELL_TIME (3 * 1000)
+#define PERMANENTLY_UP_DWELL_TIME (30 * 1000)
+
+Ultrasonic ultrasonic(3,2); //trig, echo
+Ultrasonic ultrasonic1(13,1);
+
+RH_NRF24 nrf24;
+RH_NRF24 nrf24X1;
+
+const int S_armdown = 0;
+const int S_armup = 1;
+const int S_armupperm = 2;
+const int S_armdown1 = 3;
+const int S_armup1 = 4;
+const int S_armupperm1 = 5;
+const int CarThresholdValue = 90;
+uint8_t Count = 80;
+int state;
+int state1;
+
+
+//int SensorInArm = 1;
+//int SensorInCar = 2;
+//int SensorOutArm = 3;
+//int SensorOutCar = 4;
+
+uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
+
+void setup()
+{
+  int state = S_armdown;
+  int state = S_armdown1;
+  Serial.begin(9600);
+  while (!Serial)
+    ; // wait for serial port to connect. Needed for Leonardo only
+  if (!nrf24.init())
+    Serial.println("init failed");
+  // Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
+  if (!nrf24.setChannel(1))
+    Serial.println("setChannel failed");
+  if (!nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm))
+    Serial.println("setRF failed");
+
+  setBuf(buf, Count);
+  nrf24.send(buf, sizeof(buf));
+}
+
+void setBuf(uint8_t *buf, uint8_t Count)
+{
+  int i;
+    for (i = 0; i < RH_NRF24_MAX_MESSAGE_LEN; ++i)
+    buf[i] = Count;
+}
+
+void loop()
+{
+    static int  CurStateStartTime = 0;
+    static int  CurStateStartTime1 = 1;
+    int         CurStateDwellTime;
+    int         CurStateDwellTime1;
+
+    switch (state)
+    {
+        case S_armdown:
+
+            if(ultrasonic.Ranging(CM) < CarThresholdValue)
+            {
+                state = S_armup;
+                CurStateStartTime = millis();
+                Count = Count - 1;
+                setBuf(buf, Count);
+
+                Serial.println("Sending to nrf24_server");
+                nrf24.send(buf, sizeof(buf));
+            }
+            break;
+
+        case S_armup:
+
+            CurStateDwellTime = millis() - CurStateStartTime;
+
+            if (ultrasonic.Ranging(CM) > CarThresholdValue && CurStateDwellTime >= MIN_ARMUP_DWELL_TIME)
+            {
+                state = S_armdown;
+            }
+            else if (CurStateDwellTime >= PERMANENTLY_UP_DWELL_TIME)
+            {
+                state = S_armupperm;
+            }
+
+            break;
+        case S_armupperm:
+
+            if(ultrasonic.Ranging(CM) > CarThresholdValue)
+            {
+                state = S_armdown;
+            }
+            else if (ultrasonic.Ranging(CM) < CarThresholdValue)
+            {
+                Count = Count - 1;
+            }
+     }
+
+    switch (state1)
+    {
+       case S_armdown1:
+
+            if(ultrasonic1.Ranging(CM) < CarThresholdValue)
+            {
+                state = S_armup1;
+                CurStateStartTime1 = millis();
+                Count = Count + 1;
+                setBuf(buf1, Count);
+
+                Serial.println("Sending to nrf24_server");
+                nrf24X1.send(buf1, sizeof(buf));
+            }
+            break;
+
+        case S_armup:
+
+            CurStateDwellTime1 = millis() - CurStateStartTime1;
+
+            if (ultrasonic1.Ranging(CM) > CarThresholdValue && CurStateDwellTime1 >= MIN_ARMUP_DWELL_TIME)
+            {
+                state = S_armdown1;
+            }
+            else if (CurStateDwellTime1 >= PERMANENTLY_UP_DWELL_TIME)
+            {
+                state = S_armupperm1;
+            }
+
+            break;
+        case S_armupperm:
+
+            if(ultrasonic1.Ranging(CM) > CarThresholdValue)
+            {
+                state = S_armdown1;
+            }
+            else if (ultrasonic1.Ranging(CM) < CarThresholdValue)
+            {
+                Count = Count + 1;
+            }
+     }
+    }
+}
